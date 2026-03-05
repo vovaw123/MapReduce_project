@@ -1,0 +1,5 @@
+C:/Users/Володимир/Documents/MapReduce_projecto/MapReduce_project/mapreduce-cpp/build/CMakeFiles/mapreduce_demo.dir
+C:/Users/Володимир/Documents/MapReduce_projecto/MapReduce_project/mapreduce-cpp/build/CMakeFiles/mapreduce_tests.dir
+C:/Users/Володимир/Documents/MapReduce_projecto/MapReduce_project/mapreduce-cpp/build/CMakeFiles/test.dir
+C:/Users/Володимир/Documents/MapReduce_projecto/MapReduce_project/mapreduce-cpp/build/CMakeFiles/edit_cache.dir
+C:/Users/Володимир/Documents/MapReduce_projecto/MapReduce_project/mapreduce-cpp/build/CMakeFiles/rebuild_cache.dir

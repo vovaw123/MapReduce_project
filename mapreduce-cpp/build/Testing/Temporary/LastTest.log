@@ -1,0 +1,18 @@
+Start testing: Mar 05 14:48 Фінляндія (зима)
+----------------------------------------------------------
+1/1 Testing: mapreduce_tests
+1/1 Test: mapreduce_tests
+Command: "C:/Users/Р’РѕР»РѕРґРёРјРёСЂ/Documents/MapReduce_projecto/MapReduce_project/mapreduce-cpp/build/mapreduce_tests.exe"
+Directory: C:/Users/Р’РѕР»РѕРґРёРјРёСЂ/Documents/MapReduce_projecto/MapReduce_project/mapreduce-cpp/build
+"mapreduce_tests" start time: Mar 05 14:48 Фінляндія (зима)
+Output:
+----------------------------------------------------------
+<end of output>
+Test time =   0.06 sec
+----------------------------------------------------------
+Test Passed.
+"mapreduce_tests" end time: Mar 05 14:48 Фінляндія (зима)
+"mapreduce_tests" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: Mar 05 14:48 Фінляндія (зима)

@@ -1,0 +1,7 @@
+# ninja log v7
+57	2489	7944171838112437	CMakeFiles/mapreduce_tests.dir/tests/test_mapreduce.cpp.obj	7ade89666bb413ed
+17	2817	7944179516725799	CMakeFiles/mapreduce_demo.dir/src/main.cpp.obj	7c6960834357bfff
+2497	3223	7944171862516156	mapreduce_tests.exe	23b79385b44c6337
+2818	3590	7944179544731397	mapreduce_demo.exe	1c4d3e3e1daa75c
+8	2436	7944181317161669	CMakeFiles/mapreduce_demo.dir/examples/demo_main.cpp.obj	3fcc19d61c365f6
+2437	3053	7944181341436572	mapreduce_demo.exe	c655b6655e68e47c
