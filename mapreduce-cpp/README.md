@@ -1,28 +1,65 @@
 # Basic MapReduce (C++)
 
-## Assignment analysis
+## Quick start (short)
 
-From `build/requirements.txt`, the required items are:
-- C++ language
+1. Build without MPI + run demo test:
+
+```powershell
+cmake -S . -B build
+cmake --build build
+ctest --test-dir build
+```
+
+2. Run local demo (serial/threaded):
+
+```powershell
+python scripts/generate_input.py --output data/input.txt --count 200000
+build\mapreduce_demo.exe --input data/input.txt --demo wordcount --mode serial
+build\mapreduce_demo.exe --input data/input.txt --demo wordcount --mode threads --threads 4
+```
+
+3. Build with MPI + run MPI demo:
+
+```powershell
+cmake -S . -B build_mpi -DMAPREDUCE_USE_MPI=ON
+cmake --build build_mpi
+mpiexec -n 4 build_mpi\mapreduce_mpi_demo.exe --input data/input.txt
+```
+
+4. Build two benchmark charts (no-MPI vs MPI):
+
+```powershell
+python scripts/benchmark_plot.py --source-root . --build-nompi build_nompi --build-mpi build_mpi --sizes 50000,100000,200000,400000 --threads 4 --mpi-ranks 4 --runs 3 --out-dir data/plots
+```
+
+Charts are saved to:
+
+- `data/plots/benchmark_no_mpi.png`
+- `data/plots/benchmark_with_mpi.png`
+
+## What this project covers
+
+- C++ MapReduce core (header-only)
 - Custom Map and Reduce functions
-- Parallelization (at least one method for now)
-- Tests, demo program, documentation
-- Python wrapper for running C++ and plotting serial vs threaded comparison
-
-This repository now contains a very basic implementation that satisfies this scope.
+- Two local backends: serial and threaded
+- Distributed backend: MPI
+- One compact demo-style test
+- Demo executables and Python benchmarking script with two charts
 
 ## What is implemented
 
 - Generic MapReduce API in `include/mapreduce.hpp`
   - `run_serial(...)`
-  - `run_threaded(..., thread_count, ...)` using `std::thread` + `std::mutex`
+  - `run_threaded(..., thread_count, ...)`
+  - `run_mpi(...)` (scatter -> local map -> alltoallv shuffle -> local reduce -> gather)
 - Demo executable `mapreduce_demo` in `examples/demo_main.cpp`
-  - Map: classify each string as `letters_only` or `has_digits`
-  - Reduce: sum counts per key
-- Test executable in `tests/test_mapreduce.cpp`
-- Python scripts:
-  - `scripts/generate_input.py` for random input generation
-  - `scripts/benchmark_plot.py` for serial vs threaded performance chart
+  - `classify_lines` and `word_count`
+- MPI demo executable `mapreduce_mpi_demo` in `examples/word_count_mpi.cpp`
+- Single demo-style test in `tests/test_mapreduce.cpp`
+- Python benchmark script `scripts/benchmark_plot.py`
+  - auto-builds no-MPI and MPI variants
+  - runs benchmarks
+  - saves two charts
 
 ## Build
 
@@ -30,6 +67,13 @@ This repository now contains a very basic implementation that satisfies this sco
 cmake -S . -B build
 cmake --build build
 ctest --test-dir build
+```
+
+With MPI demo:
+
+```powershell
+cmake -S . -B build_mpi -DMAPREDUCE_USE_MPI=ON
+cmake --build build_mpi
 ```
 
 Library is header-only (`mapreduce_lib` as INTERFACE target), so the core is in `include/`.
@@ -52,10 +96,19 @@ build\mapreduce_demo.exe --input data/input.txt --mode serial
 build\mapreduce_demo.exe --input data/input.txt --mode threads --threads 4
 ```
 
-3. Plot benchmark:
+3. Run MPI demo directly:
 
 ```powershell
-python scripts/benchmark_plot.py --exe build/mapreduce_demo.exe --input data/input.txt --count 200000 --runs 5 --max-threads 4 --output data/benchmark.png
+mpiexec -n 4 build_mpi\mapreduce_mpi_demo.exe --input data/input.txt
 ```
 
-`benchmark_plot.py` regenerates fresh input on every run before benchmarking.
+4. Build and run benchmark script (2 charts):
+
+```powershell
+python scripts/benchmark_plot.py --source-root . --build-nompi build_nompi --build-mpi build_mpi --sizes 50000,100000,200000,400000 --threads 4 --mpi-ranks 4 --runs 3 --out-dir data/plots
+```
+
+Outputs:
+
+- `data/plots/benchmark_no_mpi.png`
+- `data/plots/benchmark_with_mpi.png`
