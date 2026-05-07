@@ -19,7 +19,6 @@
 
 #include <algorithm>
 #include <functional>
-#include <mutex>
 #include <thread>
 #include <type_traits>
 #include <unordered_map>
@@ -114,8 +113,8 @@ auto run_threaded(const std::vector<Input>& input,
     if (thread_count == 0) thread_count = 1;
     thread_count = std::min<std::size_t>(thread_count, std::max<std::size_t>(1, input.size()));
 
-    std::unordered_map<Key, Value> shared_result;
-    std::mutex result_mutex;
+    // Each thread writes into its own slot – zero contention during map phase.
+    std::vector<std::unordered_map<Key, Value>> locals(thread_count);
     std::vector<std::thread> workers;
     workers.reserve(thread_count);
 
@@ -125,18 +124,47 @@ auto run_threaded(const std::vector<Input>& input,
         const std::size_t seg_start = index * chunk_size;
         const std::size_t seg_end   = std::min(input.size(), seg_start + chunk_size);
 
-        workers.emplace_back([&, seg_start, seg_end]() {
-            std::unordered_map<Key, Value> local;
+        workers.emplace_back([&, index, seg_start, seg_end]() {
             for (std::size_t pos = seg_start; pos < seg_end; ++pos) {
-                detail::map_and_fold(local, input[pos], map_fn, reduce_fn);
+                detail::map_and_fold(locals[index], input[pos], map_fn, reduce_fn);
             }
-            std::lock_guard<std::mutex> lock(result_mutex);
-            detail::merge_into(shared_result, local, reduce_fn);
         });
     }
 
     for (auto& w : workers) w.join();
-    return shared_result;
+
+    // Merge all local maps in the main thread – no locking needed.
+    std::unordered_map<Key, Value> result;
+    for (auto& local : locals)
+        detail::merge_into(result, local, reduce_fn);
+    return result;
+}
+
+// ---------------------------------------------------------------------------
+// Iterator overloads – accept any pair of iterators (std::list, array, partial range)
+// run_serial(first, last, map_fn, reduce_fn)
+// run_threaded(first, last, thread_count, map_fn, reduce_fn)
+// ---------------------------------------------------------------------------
+template <typename InputIt, typename MapFn, typename ReduceFn>
+auto run_serial(InputIt first, InputIt last, MapFn map_fn, ReduceFn reduce_fn) {
+    using Input   = std::decay_t<decltype(*first)>;
+    using VecPair = detail::VecPairT<Input, MapFn>;
+    using Key     = detail::KeyT<VecPair>;
+    using Value   = detail::ValueT<VecPair>;
+
+    std::unordered_map<Key, Value> result;
+    for (auto it = first; it != last; ++it)
+        detail::map_and_fold(result, *it, map_fn, reduce_fn);
+    return result;
+}
+
+template <typename InputIt, typename MapFn, typename ReduceFn>
+auto run_threaded(InputIt first, InputIt last,
+                  std::size_t thread_count,
+                  MapFn map_fn, ReduceFn reduce_fn) {
+    using Input = std::decay_t<decltype(*first)>;
+    std::vector<Input> vec(first, last);
+    return run_threaded(vec, thread_count, map_fn, reduce_fn);
 }
 
 // ---------------------------------------------------------------------------

@@ -85,7 +85,22 @@ def exe_name(base: str) -> str:
     return f"{base}.exe" if shutil.which("where") else base
 
 
-def run_demo(exe: Path, input_path: Path, mode: str, threads: int, runs: int) -> float:
+def run_demo(exe: Path, input_path: Path, mode: str, threads: int, runs: int, warmup: int = 1) -> float:
+    # warmup runs – discarded, prime the CPU cache and OS file cache
+    for _ in range(warmup):
+        run_cmd(
+            [
+                str(exe),
+                "--input",
+                str(input_path),
+                "--demo",
+                "wordcount",
+                "--mode",
+                mode,
+                "--threads",
+                str(threads),
+            ]
+        )
     samples: list[int] = []
     for _ in range(runs):
         out = run_cmd(
@@ -102,7 +117,7 @@ def run_demo(exe: Path, input_path: Path, mode: str, threads: int, runs: int) ->
             ]
         )
         samples.append(parse_key(out, "time_us"))
-    return float(statistics.mean(samples))
+    return float(statistics.median(samples))
 
 
 def find_mpi_launcher() -> str:
@@ -112,8 +127,11 @@ def find_mpi_launcher() -> str:
     return launcher
 
 
-def run_mpi_demo(exe: Path, input_path: Path, mpi_ranks: int, runs: int) -> float:
+def run_mpi_demo(exe: Path, input_path: Path, mpi_ranks: int, runs: int, warmup: int = 1) -> float:
     launcher = find_mpi_launcher()
+    # warmup runs – discarded
+    for _ in range(warmup):
+        run_cmd([launcher, "-n", str(mpi_ranks), str(exe), "--input", str(input_path)])
     samples: list[int] = []
     for _ in range(runs):
         out = run_cmd(
@@ -126,17 +144,26 @@ def run_mpi_demo(exe: Path, input_path: Path, mpi_ranks: int, runs: int) -> floa
                 str(input_path),
             ]
         )
+        # verify MPI result matches serial reference
+        for line in out.splitlines():
+            if line.startswith("verify="):
+                verify = line.split("=", 1)[1].strip()
+                if verify != "MATCH":
+                    raise RuntimeError(
+                        f"MPI result differs from serial reference! verify={verify}\n"
+                        f"Input: {input_path}  ranks={mpi_ranks}"
+                    )
         samples.append(parse_key(out, "mpi_time_us"))
-    return float(statistics.mean(samples))
+    return float(statistics.median(samples))
 
 
-def plot_no_mpi(out_path: Path, sizes: list[int], serial_us: list[float], threaded_us: list[float], threads: int) -> None:
+def plot_threaded_vs_mpi(out_path: Path, sizes: list[int], threaded_us: list[float], mpi_us: list[float], threads: int, mpi_ranks: int) -> None:
     plt.figure(figsize=(10, 6))
-    plt.plot(sizes, serial_us, marker="o", linewidth=2.8, color="#e63946", label="Serial")
-    plt.plot(sizes, threaded_us, marker="s", linewidth=2.8, color="#1d3557", label=f"Threads x{threads}")
+    plt.plot(sizes, threaded_us, marker="s", linewidth=2.8, color="#1d3557", label=f"Threaded x{threads} (shared memory)")
+    plt.plot(sizes, mpi_us, marker="^", linewidth=2.8, color="#06d6a0", label=f"MPI x{mpi_ranks} (distributed)")
     plt.xlabel("Input lines", fontsize=12)
     plt.ylabel("Time (us)", fontsize=12)
-    plt.title("No MPI: Serial vs Threaded", fontsize=16, fontweight="bold")
+    plt.title(f"Threaded x{threads} vs MPI x{mpi_ranks}", fontsize=16, fontweight="bold")
     plt.grid(True, alpha=0.25)
     plt.legend()
     plt.tight_layout()
@@ -145,13 +172,14 @@ def plot_no_mpi(out_path: Path, sizes: list[int], serial_us: list[float], thread
     plt.close()
 
 
-def plot_mpi(out_path: Path, sizes: list[int], threaded_us: list[float], mpi_us: list[float], mpi_ranks: int, threads: int) -> None:
+def plot_speedup(out_path: Path, sizes: list[int], threaded_us: list[float], mpi_us: list[float], mpi_ranks: int, threads: int) -> None:
+    speedup = [t / m for t, m in zip(threaded_us, mpi_us)]
     plt.figure(figsize=(10, 6))
-    plt.plot(sizes, threaded_us, marker="s", linewidth=2.8, color="#ff7f11", label=f"Threads x{threads} (no MPI)")
-    plt.plot(sizes, mpi_us, marker="^", linewidth=2.8, color="#06d6a0", label=f"MPI x{mpi_ranks}")
+    plt.plot(sizes, speedup, marker="o", linewidth=2.8, color="#e63946", label=f"MPI x{mpi_ranks} speedup over Threaded x{threads}")
+    plt.axhline(y=1.0, color="gray", linestyle="--", linewidth=1.2, label="Baseline (=1, no speedup)")
     plt.xlabel("Input lines", fontsize=12)
-    plt.ylabel("Time (us)", fontsize=12)
-    plt.title("With MPI: Threaded baseline vs MPI", fontsize=16, fontweight="bold")
+    plt.ylabel("Speedup (Threaded / MPI time)", fontsize=12)
+    plt.title(f"MPI x{mpi_ranks} speedup over Threaded x{threads}", fontsize=16, fontweight="bold")
     plt.grid(True, alpha=0.25)
     plt.legend()
     plt.tight_layout()
@@ -173,6 +201,7 @@ def main() -> None:
     parser.add_argument("--threads", type=int, default=4)
     parser.add_argument("--mpi-ranks", type=int, default=4)
     parser.add_argument("--runs", type=int, default=3)
+    parser.add_argument("--warmup", type=int, default=1, help="Warmup runs before measurement (discarded)")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--work-dir", default="data/bench")
     parser.add_argument("--out-dir", default="data/plots")
@@ -236,7 +265,6 @@ def main() -> None:
     if not demo_mpi.exists():
         raise FileNotFoundError(f"Executable not found: {demo_mpi}")
 
-    serial_us: list[float] = []
     threaded_us: list[float] = []
     mpi_us: list[float] = []
 
@@ -245,27 +273,25 @@ def main() -> None:
         input_path = work_dir / f"input_{size}.txt"
         generate_wordcount_input(input_path, size, seed=args.seed + idx)
 
-        serial_t = run_demo(demo_nompi, input_path, mode="serial", threads=args.threads, runs=args.runs)
-        threaded_t = run_demo(demo_nompi, input_path, mode="threads", threads=args.threads, runs=args.runs)
-        mpi_t = run_mpi_demo(demo_mpi, input_path, mpi_ranks=args.mpi_ranks, runs=args.runs)
+        threaded_t = run_demo(demo_nompi, input_path, mode="threads", threads=args.threads, runs=args.runs, warmup=args.warmup)
+        mpi_t      = run_mpi_demo(demo_mpi, input_path, mpi_ranks=args.mpi_ranks, runs=args.runs, warmup=args.warmup)
 
-        serial_us.append(serial_t)
         threaded_us.append(threaded_t)
         mpi_us.append(mpi_t)
 
         print(
-            f"size={size}: serial={int(serial_t)} us, "
-            f"threads={int(threaded_t)} us, mpi={int(mpi_t)} us"
+            f"size={size}: threads={int(threaded_t)} us, mpi={int(mpi_t)} us, "
+            f"speedup={threaded_t/mpi_t:.2f}x"
         )
 
     print("[4/4] Plotting charts...")
-    no_mpi_png = out_dir / "benchmark_no_mpi.png"
-    mpi_png = out_dir / "benchmark_with_mpi.png"
-    plot_no_mpi(no_mpi_png, sizes, serial_us, threaded_us, args.threads)
-    plot_mpi(mpi_png, sizes, threaded_us, mpi_us, args.mpi_ranks, args.threads)
+    comparison_png = out_dir / "benchmark_threaded_vs_mpi.png"
+    speedup_png    = out_dir / "benchmark_speedup.png"
+    plot_threaded_vs_mpi(comparison_png, sizes, threaded_us, mpi_us, args.threads, args.mpi_ranks)
+    plot_speedup(speedup_png, sizes, threaded_us, mpi_us, args.mpi_ranks, args.threads)
 
-    print(f"Saved: {no_mpi_png}")
-    print(f"Saved: {mpi_png}")
+    print(f"Saved: {comparison_png}")
+    print(f"Saved: {speedup_png}")
 
 
 if __name__ == "__main__":

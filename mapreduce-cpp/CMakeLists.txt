@@ -89,6 +89,8 @@ endif()
 if(MAPREDUCE_BUILD_TESTS)
     add_executable(mapreduce_tests tests/test_mapreduce.cpp)
     target_link_libraries(mapreduce_tests PRIVATE mapreduce_lib)
+    target_compile_definitions(mapreduce_tests PRIVATE
+        MAPREDUCE_DATA_DIR="${CMAKE_SOURCE_DIR}/../data")
 
     enable_testing()
     add_test(NAME mapreduce_tests COMMAND mapreduce_tests)

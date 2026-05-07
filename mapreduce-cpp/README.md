@@ -29,7 +29,7 @@ mpiexec -n 4 build_mpi\mapreduce_mpi_demo.exe --input data/input.txt
 4. Build two benchmark charts (no-MPI vs MPI):
 
 ```powershell
-python scripts/benchmark_plot.py --source-root . --build-nompi build_nompi --build-mpi build_mpi --sizes 50000,100000,200000,400000 --threads 4 --mpi-ranks 4 --runs 3 --out-dir data/plots
+python scripts/benchmark_plot.py --source-root . --build-nompi build_nompi --build-mpi build_mpi --sizes 50000,100000,200000,400000 --threads 4 --mpi-ranks 4 --runs 3 --warmup 1 --out-dir data/plots
 ```
 
 Charts are saved to:
@@ -49,16 +49,29 @@ Charts are saved to:
 ## What is implemented
 
 - Generic MapReduce API in `include/mapreduce.hpp`
-  - `run_serial(...)`
-  - `run_threaded(..., thread_count, ...)`
+  - `run_serial(vector, map_fn, reduce_fn)`
+  - `run_serial(first, last, map_fn, reduce_fn)` ← iterator overload
+  - `run_threaded(vector, thread_count, map_fn, reduce_fn)`
+  - `run_threaded(first, last, thread_count, map_fn, reduce_fn)` ← iterator overload
   - `run_mpi(...)` (scatter -> local map -> alltoallv shuffle -> local reduce -> gather)
 - Demo executable `mapreduce_demo` in `examples/demo_main.cpp`
   - `classify_lines` and `word_count`
 - MPI demo executable `mapreduce_mpi_demo` in `examples/word_count_mpi.cpp`
-- Single demo-style test in `tests/test_mapreduce.cpp`
+  - prints `verify=MATCH` or `verify=MISMATCH` comparing serial vs MPI result
+- Expanded test suite in `tests/test_mapreduce.cpp`
+  - basic classify + wordcount with exact asserts
+  - empty input → empty result
+  - map returning 0 pairs (filter semantics)
+  - `thread_count > input.size()` safety
+  - single-item input
+  - punctuation-only line → wordcount emits 0 pairs
+  - iterator API: `std::list`, partial range
+  - file-based: `data/fish.txt` and `data/combine.txt` (serial == threaded, non-empty)
 - Python benchmark script `scripts/benchmark_plot.py`
+  - warmup runs before measurement (discarded, `--warmup N`, default 1)
+  - **median** instead of mean across runs
+  - MPI runs check `verify=` output and raise on MISMATCH
   - auto-builds no-MPI and MPI variants
-  - runs benchmarks
   - saves two charts
 
 ## Build
@@ -105,7 +118,7 @@ mpiexec -n 4 build_mpi\mapreduce_mpi_demo.exe --input data/input.txt
 4. Build and run benchmark script (2 charts):
 
 ```powershell
-python scripts/benchmark_plot.py --source-root . --build-nompi build_nompi --build-mpi build_mpi --sizes 50000,100000,200000,400000 --threads 4 --mpi-ranks 4 --runs 3 --out-dir data/plots
+python scripts/benchmark_plot.py --source-root . --build-nompi build_nompi --build-mpi build_mpi --sizes 50000,100000,200000,400000 --threads 4 --mpi-ranks 4 --runs 3 --warmup 1 --out-dir data/plots
 ```
 
 Outputs:

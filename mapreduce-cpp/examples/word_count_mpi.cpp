@@ -114,10 +114,11 @@ int main(int argc, char* argv[]) {
     // ------------------------------------------------------------------
     // Run all three backends (rank 0 only for serial and threaded)
     // ------------------------------------------------------------------
+    std::unordered_map<std::string, int> serial_result;
     if (rank == 0) {
         // --- Serial ---
         auto t0 = std::chrono::high_resolution_clock::now();
-        auto serial_result = mapreduce::run_serial(input, word_map, word_reduce);
+        serial_result = mapreduce::run_serial(input, word_map, word_reduce);
         auto t1 = std::chrono::high_resolution_clock::now();
         auto us_serial = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
 
@@ -151,6 +152,8 @@ int main(int argc, char* argv[]) {
         std::cout << "mpi_time_us=" << us_mpi << "\n";
         std::cout << "=== MPI x" << size << " ranks (" << us_mpi << " us) ===\n";
         print_top(mpi_result);
+        bool verify_ok = (serial_result == mpi_result);
+        std::cout << "verify=" << (verify_ok ? "MATCH" : "MISMATCH") << "\n";
     }
 
     MPI_Finalize();
